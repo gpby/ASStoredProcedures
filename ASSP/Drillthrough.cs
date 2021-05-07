@@ -21,6 +21,7 @@ using System.Text;
 using Microsoft.AnalysisServices.AdomdServer;
 using AdomdClient = Microsoft.AnalysisServices.AdomdClient;
 using System.Data;
+using System.Data.Odbc;
 using Tuple = Microsoft.AnalysisServices.AdomdServer.Tuple;
 using System.Text.RegularExpressions; //resolves ambiguous reference in .NET 4 with System.Tuple
 
@@ -78,6 +79,11 @@ namespace ASStoredProcs
             return GetDrillthroughMDXInternal(tuple, sReturnColumns, iMaxRows);
         }
 
+        public static string GetCustomDrillthroughMDX64(string sReturnColumns)
+        {
+            return Drillthrough.GetDrillthroughMDXInternal64((Tuple)null, true).Replace("\"", "&quot;").Replace("'", "&apos;");
+        }
+
         public static string GetCustomDrillthroughMDX(string sReturnColumns, Tuple tuple, int iMaxRows, bool skipDefaultMembers)
         {
             return GetDrillthroughMDXInternal(tuple, sReturnColumns, iMaxRows, skipDefaultMembers);
@@ -88,6 +94,7 @@ namespace ASStoredProcs
             return GetDrillthroughMDXInternal(tuple, sReturnColumns, iMaxRows, true);
         }
         #endregion
+
 
         private static string GetDrillthroughMDXInternal(Tuple tuple, string sReturnColumns, int? iMaxRows, bool skipDefaultMembers)
         {
@@ -103,9 +110,17 @@ namespace ASStoredProcs
             }
         }
 
+        private static string GetDrillthroughMDXInternal64(Tuple tuple, bool skipDefaultMembers)
+        {
+            string s = CurrentCellAttributes(tuple, skipDefaultMembers);
+            string pattern = @"^(\(){1}(.*?)(\)){1}$";
+            return Regex.Replace(s, pattern, "$2").Replace(",", ",\r\n");
+
+        }
+
         public static DataTable ExecuteDrillthroughAndFixColumns(string sDrillthroughMDX)
         {
-            AdomdClient.AdomdConnection conn = TimeoutUtility.ConnectAdomdClient("Data Source=" + Context.CurrentServerID + ";Initial Catalog=" + Context.CurrentDatabaseName + ";Application Name=ASSP;" );
+            AdomdClient.AdomdConnection conn = TimeoutUtility.ConnectAdomdClient("Data Source=" + Context.CurrentServerID + ";Initial Catalog=" + Context.CurrentDatabaseName + ";Application Name=ASSP;");
             try
             {
                 AdomdClient.AdomdCommand cmd = new AdomdClient.AdomdCommand();
@@ -143,9 +158,179 @@ namespace ASStoredProcs
             }
         }
 
+        public static DataTable ExecuteDrillthroughAndFixColumns(string ConnectionString, string ConfigTable, string sDrillthroughMDX64, short ConfigId = 1)
+        {
+            Context.TraceEvent(999, 0, string.Format("ExecuteDrillthroughAndFixColumns started for User: {0}", Context.CurrentConnection.User.Name));
+            OdbcConnection connection = (OdbcConnection)null;
+            string input = sDrillthroughMDX64.Replace("&quot;", "\"").Replace("&apos;", "'");
+            Context.TraceEvent(999, 0, string.Format("ExecuteDrillthroughAndFixColumns input: {0}", input));
+            DataTable dataTable1 = new DataTable();
+            DataTable dataTable2 = new DataTable();
+            DataTable dataTable3 = new DataTable();
+            short num1 = (short)ConfigId;
+            string str1 = "";
+            string str2 = "";
+            string newValue1 = " 1=1 ";
+            bool flag = true;
+            Context.TraceEvent(999, 0, "ExecuteDrillthroughAndFixColumns Connect to DB");
+            try
+            {
+                connection = new OdbcConnection(ConnectionString);
+                connection.Open();
+                OdbcDataAdapter tdDataAdapter = new OdbcDataAdapter();
+                Context.TraceEvent(999, 0, string.Format("ExecuteDrillthroughAndFixColumns ConnectionString: {0}", ConnectionString));
+                Context.TraceEvent(999, 0, string.Format("ExecuteDrillthroughAndFixColumns ConfigTable: {0}", ConfigTable));
+                Context.TraceEvent(999, 0, string.Format("ExecuteDrillthroughAndFixColumns sDrillthroughMDX64: {0}", sDrillthroughMDX64));
+
+                OdbcCommand cmd = new OdbcCommand("insert into initial_param (ConnectionString, ConfigTable, sDrillthroughMDX64) values (? , ? , ? )", connection);
+                cmd.Parameters.Add("ConnectionString", OdbcType.VarChar, 500).Value = ConnectionString;
+                cmd.Parameters.Add("ConfigTable", OdbcType.VarChar, 100).Value = ConfigTable;
+                cmd.Parameters.Add("sDrillthroughMDX64", OdbcType.VarChar, 10000).Value = sDrillthroughMDX64;
+                cmd.ExecuteNonQuery();
+
+                tdDataAdapter.SelectCommand = new OdbcCommand("select * from " + ConfigTable + " where configid = ?", connection);
+                tdDataAdapter.SelectCommand.Parameters.Add("configid", OdbcType.Int).Value = num1;
+
+                tdDataAdapter.Fill(dataTable3);
+                string str3 = dataTable3.Rows[0]["MappingTable"].ToString();
+                string str4 = dataTable3.Rows[0]["DetailSql"].ToString();
+                string newValue2 = dataTable3.Rows[0]["MaxRows"].ToString();
+                string str5 = dataTable3.Rows[0]["TimeOut"].ToString();
+
+                Context.TraceEvent(999, 0, string.Format("ExecuteDrillthroughAndFixColumns MappingTable: {0}", str3));
+                Context.TraceEvent(999, 0, string.Format("ExecuteDrillthroughAndFixColumns DetailSql: {0}", str4));
+                Context.TraceEvent(999, 0, string.Format("ExecuteDrillthroughAndFixColumns MaxRows: {0}", newValue2));
+                Context.TraceEvent(999, 0, string.Format("ExecuteDrillthroughAndFixColumns TimeOut: {0}", str5));
+
+                OdbcCommand tdCommand1 = new OdbcCommand("select * from " + str3 + " where ConfigId = " + num1.ToString() + " order by USER_NAME_FIELD_ORDER ", connection);
+                Context.TraceEvent(999, 0, string.Format("ExecuteDrillthroughAndFixColumns Command SQL: {0}", tdCommand1.CommandText));
+                tdCommand1.CommandTimeout = (int)Convert.ToInt16(str5);
+                tdDataAdapter.SelectCommand = tdCommand1;
+                tdDataAdapter.Fill(dataTable1);
+                string[] strArray1 = System.Text.RegularExpressions.Regex.Split(input, @",.*\n");
+                Context.TraceEvent(999, 0, string.Format("ExecuteDrillthroughAndFixColumns Find Dimensions: {0}", strArray1.Length.ToString()));
+                tdCommand1.Parameters.Clear();
+                foreach (string str6 in strArray1)
+                {
+                    //Context.TraceEvent(999, 0, string.Format("ExecuteDrillthroughAndFixColumns Process fields: {0}", str6));
+                    //Context.TraceEvent(999, 0, string.Format("row: {0} Index Of & {1}", str6, str6.IndexOf("&")));
+                    if (str6.IndexOf("&") >= 0 || flag)
+                    {
+
+                        foreach (DataRow dataRow in (InternalDataCollectionBase)dataTable1.Rows)
+                        {
+                            if (flag && dataRow["USER_NAME_FIELD"].ToString().Length != 0)
+                            {
+                                str1 = str1 + dataRow["DATABASE_FIELD"] + " as \"" + (string)dataRow["USER_NAME_FIELD"] + "\" ,";
+                                //Context.TraceEvent(999, 0, string.Format("str1 value: {0}", str1));
+                            }
+
+                            if (str6.IndexOf("&") >= 0 && str6.IndexOf(dataRow["DIMENSION_FIELD"].ToString().Trim()) >= 0)
+                            {
+                                newValue1 = string.Concat(new object[4]
+                                {
+                                  (object) newValue1,
+                                  (object) " AND ",
+                                  dataRow["DATABASE_FIELD"],
+                                  (object) " = ? "
+                                });
+                                //Context.TraceEvent(999, 0, string.Format("str6 value: {0} str6.IndexOf&:{1} str6.IndexOf]:{2}", str1, str6.IndexOf("&"), str6.IndexOf("]", str6.IndexOf("&") + 2)));
+                                string str7 = str6.Substring(str6.IndexOf("&") + 2, str6.IndexOf("]", str6.IndexOf("&") + 2) - str6.IndexOf("&") - 2);
+                                //Context.TraceEvent(999, 0, string.Format("str7 value: {0}", str7));
+                                switch (dataRow["DATABASE_FIELD_TYPE"].ToString())
+                                {
+                                    case "VARCHAR":
+                                        tdCommand1.Parameters.Add(dataRow["FIELD_ID"].ToString(), OdbcType.NVarChar, str7.Length).Value = (object)str7;
+                                        break;
+                                    case "INT":
+                                        tdCommand1.Parameters.Add(dataRow["FIELD_ID"].ToString(), OdbcType.Int, str7.Length).Value = (object)str7;
+                                        break;
+                                    case "SMALLINT":
+                                        tdCommand1.Parameters.Add(dataRow["FIELD_ID"].ToString(), OdbcType.SmallInt, str7.Length).Value = (object)str7;
+                                        break;
+                                    case "DATE":
+                                        tdCommand1.Parameters.Add(dataRow["FIELD_ID"].ToString(), OdbcType.Date, str7.Length).Value = DateTime.ParseExact(str7.Substring(0, 10), "yyyy-MM-dd", null);
+                                        str7 = str7.Substring(0, 10);
+                                        break;
+                                    default:
+                                        tdCommand1.Parameters.Add(dataRow["FIELD_ID"].ToString(), OdbcType.NVarChar, str7.Length).Value = (object)str7;
+                                        break;
+                                }
+                                //tdCommand1.Parameters[dataRow["FIELD_ID"].ToString()].Value = (object) str7;
+                                str2 = str2 + (object)" AND " + (string)dataRow["DATABASE_FIELD"] + " = '" + str7 + "'";
+                                //Context.TraceEvent(999, 0, string.Format("str2 value: {0}", str2));
+                            }
+                        }
+                        flag = false;
+                    }
+                }
+                tdCommand1.CommandText = str4.Replace("<COLUMN_LIST>", str1.TrimEnd(new char[1]
+                {
+          ','
+                })).Replace("<WHERE>", newValue1).Replace("<MAXROWS>", newValue2);
+                Context.TraceEvent(999, 0, string.Format("ExecuteDrillthroughAndFixColumns Prepared SQL query: {0}", tdCommand1.CommandText));
+
+                OdbcCommand cmd1 = new OdbcCommand("Insert Into SQLQueryLog (SQLTxt, UserName ) Values (?, ?)", connection);
+                cmd1.Parameters.Add("SQLtxt", OdbcType.VarChar, 16000).Value = (str2.Length > 1) ? str2.Substring(0, (str2.Length > 16000) ? 16000 : str2.Length) : "NULL";
+                cmd1.Parameters.Add("UserName", OdbcType.VarChar, 100).Value = Context.CurrentConnection.User.Name;
+                cmd1.ExecuteNonQuery();
+
+                OdbcCommand OdbcCommand2 = new OdbcCommand("select top 1 query_id from SQLQueryLog where event_time = (select max (event_time ) from SQLQueryLog ); ", connection);
+                tdDataAdapter.SelectCommand = OdbcCommand2;
+                DataTable dataTable4 = new DataTable();
+                tdDataAdapter.Fill(dataTable4);
+                long num2 = Convert.ToInt64(dataTable4.Rows[0][0].ToString());
+                DateTime now1 = DateTime.Now;
+                Context.TraceEvent(999, 0, "ExecuteDrillthroughAndFixColumns Start excecute SQL query");
+                tdDataAdapter.SelectCommand = tdCommand1;
+                tdDataAdapter.Fill(dataTable2);
+                Context.TraceEvent(999, 0, "ExecuteDrillthroughAndFixColumns End excecute SQL query");
+                DateTime now2 = DateTime.Now;
+
+                TimeSpan timeSpan = now2 - now1;
+                string str8 = timeSpan.TotalSeconds.ToString();
+                Context.TraceEvent(999, 0, string.Format("Work completed in {0} seconds", str8));
+
+                OdbcCommand cmd3 = new OdbcCommand("insert INTO SQLQueryLog_dur (QUERY_ID , duration , quantity ) VALUES (?, ?, ?)", connection);
+                cmd3.Parameters.Add("QUERY_ID", OdbcType.Int).Value = num2;
+                cmd3.Parameters.Add("duration", OdbcType.Double).Value = Convert.ToInt64(timeSpan.TotalSeconds);
+                cmd3.Parameters.Add("quantity", OdbcType.Int).Value = dataTable2.Rows.Count;
+                cmd3.ExecuteNonQuery();
+
+                return dataTable2;
+            }
+            catch (OdbcException ex)
+            {
+                try
+                {
+                    Context.TraceEvent(999, 0, string.Format("ExecuteDrillthroughAndFixColumns ERROR: {0}", ex.Message));
+                    OdbcCommand cmd3 = new OdbcCommand("insert INTO SQLErrLog (Error_message) VALUES(?)", connection);
+                    cmd3.Parameters.Add("Error_message", OdbcType.VarChar, 2000).Value = ex.Message;
+                    cmd3.ExecuteNonQuery();
+                }
+                catch
+                {
+                }
+                if (null != connection)
+                    connection.Close();
+                dataTable2.Clear();
+                dataTable2.Columns.Add("Error String", typeof(string));
+                dataTable2.Rows.Add(new object[1]
+                {
+          (object) ex.Message
+                });
+                return dataTable2;
+            }
+            finally
+            {
+                if (null != connection)
+                    connection.Close();
+            }
+        }
+
         public static DataTable ExecuteDrillthroughAndTranslateColumns(string sDrillthroughMDX)
         {
-            Regex columnNameRegex = new Regex( @"\[(?<cube>[^]]*)]\.\[(?<level>[^]]*)]", RegexOptions.Compiled) ;
+            Regex columnNameRegex = new Regex(@"\[(?<cube>[^]]*)]\.\[(?<level>[^]]*)]", RegexOptions.Compiled);
             string connStr = "Data Source=" + Context.CurrentServerID + ";Initial Catalog=" + Context.CurrentDatabaseName + ";Application Name=ASSP;Locale Identifier=" + Context.CurrentConnection.ClientCulture.LCID;
             AdomdClient.AdomdConnection conn = TimeoutUtility.ConnectAdomdClient(connStr);
             Context.TraceEvent(999, 0, string.Format("ExecuteDrillthroughAndTranslateColumns ConnectionString: {0}", connStr));
@@ -237,7 +422,7 @@ namespace ASStoredProcs
                         }
                         Context.TraceEvent(999, 0, string.Format("translating: '{0}' to '{1}'", col.ColumnName, sNewName));
                         col.ColumnName = sNewName;
-                        
+
                     }
                 }
 
