@@ -236,20 +236,29 @@ namespace ASStoredProcs
                                 });
                                 //Context.TraceEvent(999, 0, string.Format("str6 value: {0} str6.IndexOf&:{1} str6.IndexOf]:{2}", str1, str6.IndexOf("&"), str6.IndexOf("]", str6.IndexOf("&") + 2)));
                                 string str7 = str6.Substring(str6.IndexOf("&") + 2, str6.IndexOf("]", str6.IndexOf("&") + 2) - str6.IndexOf("&") - 2);
-                                //Context.TraceEvent(999, 0, string.Format("str7 value: {0}", str7));
+                                Context.TraceEvent(999, 0, string.Format("Parameter of type {0} and value {1} with length {2} found", dataRow["DATABASE_FIELD_TYPE"].ToString(), str7, str7.Length));
                                 switch (dataRow["DATABASE_FIELD_TYPE"].ToString())
                                 {
                                     case "VARCHAR":
-                                        tdCommand1.Parameters.Add(dataRow["FIELD_ID"].ToString(), OdbcType.NVarChar, str7.Length).Value = (object)str7;
+                                        tdCommand1.Parameters.Add(dataRow["FIELD_ID"].ToString(), OdbcType.VarChar, str7.Length).Value = (object)str7;
                                         break;
+                                    case "NVARCHAR":
+                                        tdCommand1.Parameters.AddWithValue(dataRow["FIELD_ID"].ToString(), str7);
+                                        break;
+                                    case "BIGINT":
+                                        long n=0;
+                                        long.TryParse(str7, out n);
+                                        tdCommand1.Parameters.AddWithValue(dataRow["FIELD_ID"].ToString(), n);
+                                        break;
+
                                     case "INT":
-                                        tdCommand1.Parameters.Add(dataRow["FIELD_ID"].ToString(), OdbcType.Int, str7.Length).Value = (object)str7;
+                                        tdCommand1.Parameters.Add(dataRow["FIELD_ID"].ToString(), OdbcType.Int).Value = int.Parse(str7);
                                         break;
                                     case "SMALLINT":
-                                        tdCommand1.Parameters.Add(dataRow["FIELD_ID"].ToString(), OdbcType.SmallInt, str7.Length).Value = (object)str7;
+                                        tdCommand1.Parameters.Add(dataRow["FIELD_ID"].ToString(), OdbcType.SmallInt).Value = short.Parse(str7);
                                         break;
                                     case "DATE":
-                                        tdCommand1.Parameters.Add(dataRow["FIELD_ID"].ToString(), OdbcType.Date, str7.Length).Value = DateTime.ParseExact(str7.Substring(0, 10), "yyyy-MM-dd", null);
+                                        tdCommand1.Parameters.Add(dataRow["FIELD_ID"].ToString(), OdbcType.Date).Value = DateTime.ParseExact(str7.Substring(0, 10), "yyyy-MM-dd", null);
                                         str7 = str7.Substring(0, 10);
                                         break;
                                     default:
@@ -304,6 +313,8 @@ namespace ASStoredProcs
                 try
                 {
                     Context.TraceEvent(999, 0, string.Format("ExecuteDrillthroughAndFixColumns ERROR: {0}", ex.Message));
+                    Context.TraceEvent(999, 0, string.Format("StackTrace: {0}", ex.StackTrace));
+
                     OdbcCommand cmd3 = new OdbcCommand("insert INTO SQLErrLog (Error_message) VALUES(?)", connection);
                     cmd3.Parameters.Add("Error_message", OdbcType.VarChar, 2000).Value = ex.Message;
                     cmd3.ExecuteNonQuery();
