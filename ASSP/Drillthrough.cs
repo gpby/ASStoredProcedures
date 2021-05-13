@@ -26,8 +26,20 @@ using Tuple = Microsoft.AnalysisServices.AdomdServer.Tuple;
 using System.Text.RegularExpressions; //resolves ambiguous reference in .NET 4 with System.Tuple
 
 
+
 namespace ASStoredProcs
 {
+    public class Functions
+    {
+        public static string getformatedtime(int seconds)
+        {
+            TimeSpan myTimeSpan = new TimeSpan(0, 0, seconds);
+            String ftime = string.Format("{0:00}:{1:00}:{2:00}", (int)myTimeSpan.TotalHours, myTimeSpan.Minutes, myTimeSpan.Seconds);
+
+            return (ftime);
+        }
+
+    }
 
     public class Drillthrough
     {

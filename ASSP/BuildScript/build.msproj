@@ -95,7 +95,7 @@
 	<Exec Command="powershell -Command &quot;write-host &apos;Hello World&apos;&quot;" />
 							  -->
     <Message Text="Creating XMLA from $(dllFile)" Importance="high"/>
-    <Exec Command="powershell -NoProfile -NoLogo -executionpolicy RemoteSigned -File &quot;$(ScriptLocation)&quot; -dllFile &quot;$(dllFile)&quot; -xmlaFile &quot;$(xmlaFile)&quot;" />
+    <Exec Command="powershell -NoProfile -NoLogo -executionpolicy Bypass -File &quot;$(ScriptLocation)&quot; -dllFile &quot;$(dllFile)&quot; -xmlaFile &quot;$(xmlaFile)&quot;" />
   </Target>
 
 
